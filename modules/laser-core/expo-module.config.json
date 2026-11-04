@@ -1,0 +1,10 @@
+{
+  "platforms": ["android"],
+  "android": {
+    "modules": [
+      "dev.vakharwalad23.lasercore.ScanModule",
+      "dev.vakharwalad23.lasercore.ProbeModule",
+      "dev.vakharwalad23.lasercore.LibraryModule"
+    ]
+  }
+}
