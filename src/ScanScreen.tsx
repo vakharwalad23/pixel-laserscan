@@ -16,6 +16,7 @@ const LASER_TEXT: Record<string, string> = {
   disagrees: 'Laser and ARCore disagree; skipping this reading',
   edge: 'Laser cone spans an edge; skipping this reading',
   unverified: 'No depth to check against; pause so the lens settles',
+  uncalibrated: 'This camera reports focus in no real unit; laser ranging is off',
   infinity: 'Target is beyond the focus range',
   beyond_hyperfocal: 'Too far for a laser range',
   too_close: 'Too close; back off a little',

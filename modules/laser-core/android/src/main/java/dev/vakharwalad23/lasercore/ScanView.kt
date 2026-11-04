@@ -173,7 +173,6 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
 
   fun setApplyLaserScale(on: Boolean) {
     applyLaserScale = on
-    lockedScale = if (on) trustedScale() ?: 1f else 1f
   }
 
   fun setLaserProfile(id: String) {
@@ -189,14 +188,8 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
   }
 
   private fun applyModes() {
-    // Fusion stays in ARCore units; the laser scale is applied to hits and to the export.
+    // Fusion stays in ARCore units: laser hits are always converted with the locked scale.
     withHandle { NativeFusion.nativeSetModes(it, mode != "laser", mode != "depth", 1f) }
-  }
-
-  // Laser/ARCore ratio once enough samples agree, else null.
-  private fun trustedScale(): Float? {
-    val s = withHandle { NativeFusion.nativeScaleStats(it) } ?: return null
-    return if (s[0] >= 20f && s[2] < 0.05f) s[1] else null
   }
 
   private fun createFusion() {
@@ -214,13 +207,13 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
       handle = 0L
     }
     createFusion()
-    if (applyLaserScale) lockedScale = 1f
+    lockedScale = 1f
     pendingRendererClear = true
   }
 
   fun resetScan() {
     withHandle { NativeFusion.nativeReset(it) }
-    if (applyLaserScale) lockedScale = 1f
+    lockedScale = 1f
     lastAccepted = null
     pendingRendererClear = true
     applyModes()
@@ -447,26 +440,31 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
     if (minFocusDiopters > 0f && diop >= minFocusDiopters * 0.98f) { laserState = "too_close"; return }
     if (z > minOf(maxLaserRange, t.maxRange)) { laserState = "out_of_range"; return }
     if (afState != AF_PASSIVE_FOCUSED && afState != AF_FOCUSED_LOCKED) { laserState = "unfocused"; return }
+    // Camera2: uncalibrated focus distances are in no physical unit, so 1/diopters isn't a range.
+    if (focusCalibration == "uncalibrated") { laserState = "uncalibrated"; return }
 
     // Continuous AF holds the lens while in focus; large motion without a refocus means stale.
     val sp = settledPose!!
     val moved = translation(sp, pose)
     val turned = rotationDeg(sp, pose)
-    if (moved > 0.08f || turned > 6f) { laserState = "stale"; return }
+    val alongRay = abs((pose[12] - sp[12]) * sp[8] + (pose[13] - sp[13]) * sp[9] + (pose[14] - sp[14]) * sp[10])
+    // Moving along the AF ray shifts the true range one-for-one while the lens still holds the old one.
+    if (moved > 0.08f || turned > 6f || alongRay > maxOf(0.01f, 0.03f * z)) { laserState = "stale"; return }
     val justSettled = moved < 0.02f && turned < 2f
 
     val depthFresh = centerDepthZ > 0f && SystemClock.uptimeMillis() - centerDepthAt < 150
     var weight = t.weight
     if (depthFresh) {
-      val r = z / centerDepthZ
+      // Compare in ARCore units, so ARCore's known depth bias neither fails nor passes a reading.
+      val r = z / (centerDepthZ * lockedScale)
       if (r < t.agreeLo || r > t.agreeHi) { laserState = "disagrees"; return }
       if (coneSpread > t.edgeSpread) {
         // Cone straddles a depth edge: keep only if it matches the AF-ray surface, at lower weight.
         if (abs(r - 1f) > t.edgeAgree) { laserState = "edge"; return }
         weight *= (1f - coneSpread / (2f * t.edgeSpread)).coerceIn(0.4f, 1f)
       }
-    } else if ((t.strictWithoutDepth || focusCalibration == "uncalibrated") && !justSettled) {
-      // Nothing to cross-check: trust wide-cone, PDAF-only or uncalibrated reads only just settled.
+    } else if (t.strictWithoutDepth && !justSettled) {
+      // Nothing to cross-check: trust wide-cone or PDAF-only reads only when just settled.
       laserState = "unverified"
       return
     }
@@ -637,7 +635,7 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
     val st = withHandle { NativeFusion.nativeStats(it) } ?: return
     val sc = withHandle { NativeFusion.nativeScaleStats(it) } ?: return
     // Freeze the scale the first time it becomes trustworthy; never drift mid-scan.
-    if (applyLaserScale && lockedScale == 1f && sc[0] >= 20f && sc[2] < 0.05f) lockedScale = sc[1]
+    if (lockedScale == 1f && sc[0] >= 20f && sc[2] < 0.05f) lockedScale = sc[1]
     val payload = mapOf(
       "tracking" to tracking,
       "trackingFailure" to trackingFailure,
@@ -683,7 +681,7 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
     }
     // Pause fusion without touching the scanning prop (JS owns it).
     saving = true
-    val scale = lockedScale
+    val scale = if (applyLaserScale) lockedScale else 1f
     try {
       worker.execute {
         try {

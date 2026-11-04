@@ -30,6 +30,7 @@ export type LaserState =
   | 'disagrees'
   | 'edge'
   | 'unverified'
+  | 'uncalibrated'
   | 'infinity'
   | 'beyond_hyperfocal'
   | 'too_close'
@@ -62,7 +63,7 @@ export type ScanStatus = {
   scaleCount: number;
   scaleMedian: number;
   scaleMad: number;
-  // laser/ARCore scale applied to the saved model (1 until trusted)
+  // laser/ARCore scale, 1 until trusted; converts laser hits, scales the saved model if applied
   lockedScale: number;
   saving: boolean;
   fps: number;
