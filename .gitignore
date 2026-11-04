@@ -45,5 +45,7 @@ yarn-error.*
 /ios
 *.apk
 
-# host test binary
+# host test binary and output
 modules/laser-core/cpp-tests/t
+modules/laser-core/cpp-tests/*.ply
+modules/laser-core/cpp-tests/*.obj

@@ -122,7 +122,7 @@ static void testSphereReconstruction() {
   CHECK(over == 0, "non-manifold edges %d", over);
   CHECK(boundary < (int)edges.size() / 50, "too many boundary edges %d", boundary);
 
-  const std::string ply = "/tmp/claude-0/-home-claude/a2d76a24-f603-5cef-ba47-4f898db932f8/scratchpad/sphere.ply";
+  const std::string ply = "sphere.ply";
   CHECK(writePlyMesh(ply, m), "write ply");
   MeshData r;
   std::string err;
@@ -133,13 +133,13 @@ static void testSphereReconstruction() {
   bool same = r.positions.size() == m.positions.size();
   for (size_t i = 0; same && i < r.positions.size(); ++i) same = r.positions[i] == m.positions[i];
   CHECK(same, "rt positions differ");
-  CHECK(writeObjMesh("/tmp/claude-0/-home-claude/a2d76a24-f603-5cef-ba47-4f898db932f8/scratchpad/sphere.obj", m), "write obj");
+  CHECK(writeObjMesh("sphere.obj", m), "write obj");
 
   auto sp = f.surfacePoints(2.0f);
   CHECK(sp.size() > 1000, "surface points %zu", sp.size());
-  CHECK(writePlyPoints("/tmp/claude-0/-home-claude/a2d76a24-f603-5cef-ba47-4f898db932f8/scratchpad/sphere_points.ply", sp), "write points");
+  CHECK(writePlyPoints("sphere_points.ply", sp), "write points");
   MeshData rp;
-  CHECK(readPly("/tmp/claude-0/-home-claude/a2d76a24-f603-5cef-ba47-4f898db932f8/scratchpad/sphere_points.ply", rp, &err) && rp.vertexCount() == sp.size() && rp.indices.empty(),
+  CHECK(readPly("sphere_points.ply", rp, &err) && rp.vertexCount() == sp.size() && rp.indices.empty(),
         "points roundtrip");
 }
 
@@ -352,8 +352,9 @@ static void testPreviewColorPoseAndCap() {
 }
 
 static void testAsciiPly() {
-  const std::string p = "/tmp/claude-0/-home-claude/a2d76a24-f603-5cef-ba47-4f898db932f8/scratchpad/quad.ply";
+  const std::string p = "quad.ply";
   FILE* f = std::fopen(p.c_str(), "w");
+  if (!f) { CHECK(false, "cannot write %s", p.c_str()); return; }
   std::fprintf(f, "ply\nformat ascii 1.0\nelement vertex 4\nproperty float x\nproperty float y\nproperty float z\n"
                   "element face 1\nproperty list uchar int vertex_indices\nend_header\n"
                   "0 0 0\n1 0 0\n1 1 0\n0 1 0\n4 0 1 2 3\n");
