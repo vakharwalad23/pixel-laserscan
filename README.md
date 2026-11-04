@@ -3,6 +3,8 @@
 A small Android scanner that treats the phone's laser autofocus (LDAF) module as a hand-swept,
 single-beam LiDAR, fuses it with ARCore raw depth, and exports 3D meshes and point clouds.
 
+It might not be the most accurate scanner out there, but it is a fun small night project.
+
 React Native (Expo SDK 58, new architecture) + Kotlin + a C++17 fusion core over JNI.
 
 ## The hardware
