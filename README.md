@@ -60,23 +60,28 @@ right after the lens settles.
 ## How it works
 
 ```
-ARCore frame ──┬─ pose (VIO) ────────────────────────────┐
-               ├─ image metadata: focus distance, AF/lens ─┤
-               │    state ──> gate ──> laser hit (u,v,z) ──┼──> C++ TSDF (sparse voxel hash)
-               └─ raw depth 16-bit + confidence + YUV ─────┘          │
-                       (worker thread)                                ├─ live preview points (GL)
-                                                                      └─ export: surface nets mesh
+ARCore frame --+- pose (VIO) ----------------------------+
+               +- image metadata: focus distance, AF/lens -+
+               |    state --> gate --> laser hit (u,v,z) --+--> C++ TSDF (sparse voxel hash)
+               +- raw depth 16-bit + confidence + YUV -----+          |
+                       (worker thread)                                +- live preview points (GL)
+                                                                      +- export: surface nets mesh
 ```
 
 - **Laser hits.** A frame's focus distance is used only when:
   - the lens is stationary and AF reports focused;
+  - the camera's focus distance is calibrated or approximate. Camera2 defines `uncalibrated`
+    distances as having no physical unit, so those are never used as ranges;
   - the distance lies between the closest focus and hyperfocal (outside that window the lens
     position says nothing about range);
-  - the phone hasn't moved more than 8 cm or 6 degrees since the lens last settled. Continuous AF
-    holds the lens while the target stays in focus, so a reading stays valid as you sweep at a
-    constant distance. Large motion with no refocus means it has probably gone stale.
+  - the phone hasn't moved more than 8 cm or 6 degrees since the lens last settled, and no more
+    than 3% of the range (at least 1 cm) along the AF ray. Continuous AF holds the lens while the
+    target stays in focus, so a reading stays valid as you sweep sideways at a constant distance.
+    Moving toward or away from the target changes the true range one-for-one while the lens still
+    reports the old one, so that reading has gone stale.
   - where ARCore depth exists on the same ray, the laser agrees with it within the profile's ratio
-    band, and passes the single-zone edge check above.
+    band, and passes the single-zone edge check above. Once the scale has locked, the comparison
+    divides it out, so a steady ARCore depth bias doesn't shift the band.
 
   Each accepted hit is the AF ray (image centre) at that z, placed in world space with the ARCore
   pose. It is splatted into the TSDF with the profile's weight (6x one depth ray on multi-zone,
@@ -87,10 +92,11 @@ ARCore frame ──┬─ pose (VIO) ──────────────�
 - **Scale.** Laser hits taken right after the lens settles (moved under 2 cm or 2 degrees, no edge
   in the cone) are compared with ARCore's depth on the same ray, and the running median is shown
   live.
-  - With **Scale the model to the laser** on, that ratio locks once it has 20 steady samples.
-  - Fusion stays in ARCore units: laser hits are converted with the locked ratio, and the saved
-    model is scaled by it. ARCore's depth and its tracking share one scale, so scaling the whole
-    model is consistent, where rescaling depth alone wouldn't be.
+  - The ratio locks once it has 20 steady samples with a median absolute deviation under 5%.
+  - Fusion stays in ARCore units: laser hits are always converted with the locked ratio, so laser
+    and depth surfaces land in the same place. With **Scale the model to the laser** on, the saved
+    model is also scaled by it. ARCore's depth and its tracking share one scale, so scaling the
+    whole model is consistent, where rescaling depth alone wouldn't be.
 - **Mesh.** Naive surface nets over the sparse TSDF. Winding is fixed geometrically, so normals
   point out. Host tests reconstruct a sphere at 1 cm voxels with 0.7 mm mean error, 0 non-manifold
   edges and 0 boundary edges.
@@ -144,6 +150,28 @@ g++ -std=c++17 -O2 -fsanitize=address,undefined -I../android/src/main/cpp \
   ../android/src/main/cpp/fusion.cpp test_fusion.cpp -o t && ./t
 ```
 
+### Docker (OrbStack or Docker Desktop)
+
+The `dev` image has the whole toolchain: Node 24, JDK 17, Kotlin 2.2, g++, and the Android SDK,
+NDK and CMake versions above. It is amd64 because the Linux NDK has no arm64 build; on Apple
+Silicon it runs under Rosetta. `node_modules` and the Gradle cache live in named volumes, and
+every run reinstalls `node_modules` with `npm ci` whenever `package-lock.json` has changed.
+
+```bash
+make image       # build the ~4 GB image (cached after the first time)
+make install     # force a fresh npm ci
+make check       # typecheck, lint, C++ core tests
+make apk         # prebuild + release APK in android/app/build/outputs/apk/release/
+make run         # install and launch on a USB phone (needs adb on the host)
+make logs        # logcat for the app's tags
+make shell       # bash with everything on PATH
+make clean       # remove android/, build output and test files
+make distclean   # also remove node_modules, the Docker volumes and the image
+```
+
+`make run` and `make logs` use the host's `adb` (`brew install --cask android-platform-tools`),
+since USB doesn't reach the container.
+
 ## Scanning tips
 
 - Objects at 30-120 cm, good light, textured surfaces. ARCore needs features to track, and the
@@ -161,7 +189,7 @@ g++ -std=c++17 -O2 -fsanitize=address,undefined -I../android/src/main/cpp \
   rejected.
 - Phones without LDAF still report a focus distance from PDAF or contrast AF. It is often
   `uncalibrated`; Probe shows which.
-- Fusion has a ~150 MB voxel budget (24k blocks). That covers roughly 75 m² of surface at 1 cm voxels.
+- Fusion has a ~150 MB voxel budget (24k blocks). That covers roughly 75 m^2 of surface at 1 cm voxels.
   Past the cap, existing surfaces keep refining but new space isn't added.
 - Saving exports while the preview keeps running; fusion pauses until the files are written.
 
