@@ -117,7 +117,8 @@ ARCore frame --+- pose (VIO) ----------------------------+
   It also runs a **zone sweep**: it steers the AF region over a 3x3, 5x5 or 8x8 grid and records the
   settled focus distance per cell. On a Pixel Pro this tests whether the HAL picks different laser
   zones per region, which would give a coarse metric depth image without root. The result can be
-  saved as a point cloud.
+  saved as a point cloud. The screen stays on while a sweep runs. Cancel stops it within about
+  0.2 s, and so does leaving the tab or the app, which frees the camera right away.
 - **Library.** Orbit viewer (drag, pinch, double-tap) for meshes, clouds and laser hits, with share
   and delete.
 

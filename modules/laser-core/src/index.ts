@@ -203,6 +203,8 @@ declare class LaserProbeModule extends NativeModule<ProbeEvents> {
   setObservedLaser(kind: LaserKind | null): LaserProfileInfo;
   // dark = starve PDAF (min exposure) so only the laser can focus: the laser test.
   sweep(cameraId: string, grid: number, settleMs: number, dark: boolean): Promise<SweepResult>;
+  // stops a running sweep within ~0.2 s; its promise rejects with code CANCELLED
+  cancelSweep(): void;
   saveLastSweep(): Promise<{ id: string; path: string; cloudPoints: number }>;
 }
 

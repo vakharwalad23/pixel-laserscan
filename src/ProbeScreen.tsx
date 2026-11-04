@@ -27,7 +27,10 @@ export function ProbeScreen(props: { onSaved: (id: string) => void }) {
       })
       .catch((e) => setCapsError(String(e?.message ?? e)));
     const sub = LaserProbe.addListener('onSweepProgress', (p) => setProgress(p));
-    return () => sub.remove();
+    return () => {
+      sub.remove();
+      LaserProbe.cancelSweep();
+    };
   }, []);
 
   const runSweep = async (dark: boolean) => {
@@ -42,7 +45,7 @@ export function ProbeScreen(props: { onSaved: (id: string) => void }) {
     try {
       setSweep(await LaserProbe.sweep(cameraId, n, dark ? 250 : 350, dark));
     } catch (e: any) {
-      Alert.alert(dark ? 'Laser test failed' : 'Sweep failed', String(e?.message ?? e));
+      if (e?.code !== 'CANCELLED') Alert.alert(dark ? 'Laser test failed' : 'Sweep failed', String(e?.message ?? e));
     } finally {
       setProgress(null);
     }
@@ -118,6 +121,7 @@ export function ProbeScreen(props: { onSaved: (id: string) => void }) {
         disabled={!cameraId || busy || !manualOk}
         style={{ marginTop: 12 }}
       />
+      {busy ? <Button label="Cancel" kind="danger" onPress={() => LaserProbe.cancelSweep()} style={{ marginTop: 8 }} /> : null}
       {sweepCam && !manualOk ? (
         <Text style={[T.small, { color: C.warn, marginTop: 8 }]}>
           {"This camera doesn't allow manual exposure, so the laser test can't run on it."}
@@ -164,7 +168,13 @@ export function ProbeScreen(props: { onSaved: (id: string) => void }) {
         />
       </View>
       <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-        <Button label="Run focus grid" onPress={() => runSweep(false)} disabled={!cameraId || busy} style={{ flex: 1 }} />
+        <Button
+          label={busy ? 'Cancel' : 'Run focus grid'}
+          kind={busy ? 'danger' : 'plain'}
+          onPress={busy ? () => LaserProbe.cancelSweep() : () => runSweep(false)}
+          disabled={!cameraId}
+          style={{ flex: 1 }}
+        />
         {sweep ? <Button label="Save as point cloud" onPress={saveSweep} disabled={busy} style={{ flex: 1 }} /> : null}
       </View>
 

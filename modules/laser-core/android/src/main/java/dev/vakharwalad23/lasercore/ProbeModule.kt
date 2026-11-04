@@ -20,6 +20,7 @@ import android.media.ImageReader
 import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
+import android.view.WindowManager
 import com.google.ar.core.ArCoreApk
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
@@ -39,6 +40,7 @@ class ProbeModule : Module() {
   private val flagRe = Regex("(tof|laser|ldaf|depth|distance|range|zone|spad|vl53|flight|pdaf|focus)", RegexOption.IGNORE_CASE)
   @Volatile private var lastSweep: Map<String, Any?>? = null
   @Volatile private var sweeping = false
+  @Volatile private var cancelled = false
   @Volatile private var meanLuma = -1.0
 
   private val ctx: Context
@@ -47,6 +49,10 @@ class ProbeModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("LaserProbe")
     Events("onSweepProgress")
+
+    // Android takes the camera from background apps, so a sweep can't outlive the screen.
+    OnActivityEntersBackground { cancelled = true }
+    OnDestroy { cancelled = true }
 
     AsyncFunction("capabilities") { promise: Promise ->
       Thread {
@@ -67,18 +73,23 @@ class ProbeModule : Module() {
         return@AsyncFunction
       }
       sweeping = true
+      cancelled = false
+      keepScreenOn(true)
       Thread {
         try {
           val r = sweep(cameraId, grid.coerceIn(1, 12), settleMs.coerceIn(0, 2000), dark)
           lastSweep = r
           promise.resolve(r)
         } catch (e: Exception) {
-          promise.reject("SWEEP_FAILED", e.message ?: e.toString(), e)
+          promise.reject(if (cancelled) "CANCELLED" else "SWEEP_FAILED", e.message ?: e.toString(), e)
         } finally {
           sweeping = false
+          keepScreenOn(false)
         }
       }.start()
     }
+
+    Function("cancelSweep") { cancelled = true }
 
     AsyncFunction("saveLastSweep") { promise: Promise ->
       val s = lastSweep
@@ -284,6 +295,7 @@ class ProbeModule : Module() {
       val cw = active.width() / n
       val chh = active.height() / n
       for (row in 0 until n) for (col in 0 until n) {
+        checkCancelled()
         // CONTROL_AF_REGIONS use active-array coordinates, origin at the array's own (0,0).
         val x0 = col * cw
         val y0 = row * chh
@@ -317,6 +329,7 @@ class ProbeModule : Module() {
         var locked: TotalCaptureResult? = null
         var lockState = -1
         while (System.currentTimeMillis() < deadline) {
+          checkCancelled()
           val r = results.poll(200, TimeUnit.MILLISECONDS) ?: continue
           val t = r.request.tag as? String ?: continue
           if (t == "$tag-start") started = true
@@ -334,6 +347,7 @@ class ProbeModule : Module() {
         val settleEnd = System.currentTimeMillis() + settleMs
         var lastResult: TotalCaptureResult? = locked
         while (System.currentTimeMillis() < settleEnd) {
+          checkCancelled()
           val r = results.poll(100, TimeUnit.MILLISECONDS) ?: continue
           val rt = r.request.tag as? String
           if (rt != tag && rt != "$tag-start") continue
@@ -435,6 +449,19 @@ class ProbeModule : Module() {
     val lens = r.get(CaptureResult.LENS_STATE) ?: return null
     if (lens != CameraMetadata.LENS_STATE_STATIONARY) return null
     return r.get(CaptureResult.LENS_FOCUS_DISTANCE)
+  }
+
+  private fun checkCancelled() {
+    if (cancelled) throw IllegalStateException("sweep cancelled")
+  }
+
+  // A sweep runs untouched for up to minutes; a screen timeout would take the camera away.
+  private fun keepScreenOn(on: Boolean) {
+    val a = appContext.currentActivity ?: return
+    a.runOnUiThread {
+      if (on) a.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+      else a.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
   }
 
   @Suppress("UNCHECKED_CAST")
