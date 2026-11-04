@@ -69,7 +69,12 @@ class ScanView(context: Context, appContext: AppContext) : ExpoView(context, app
     renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
   }
 
+  // Screen stays on only while recording; a timeout would pause ARCore mid-scan.
   @Volatile var scanning = false
+    set(v) {
+      field = v
+      main.post { glView.keepScreenOn = v }
+    }
   @Volatile private var saving = false
   @Volatile private var mode = "fused" // fused | laser | depth
   @Volatile private var voxelSize = 0.01f

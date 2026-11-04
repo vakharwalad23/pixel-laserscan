@@ -108,6 +108,7 @@ ARCore frame --+- pose (VIO) ----------------------------+
   - Modes: Laser + depth, Laser only, Depth only.
   - Resolutions: 6 mm, 1 cm, 2 cm.
   - Saving writes `mesh.ply`, `mesh.obj`, `cloud.ply`, `laser.ply` and `meta.json`.
+  - The screen stays on while recording and times out normally when paused.
 - **Probe.** Runs without ARCore. It shows the laser profile and runs the laser test. It also reports:
   - focus-distance calibration (`calibrated`, `approximate` or `uncalibrated`);
   - closest focus and hyperfocal distances;
