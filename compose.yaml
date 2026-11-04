@@ -1,0 +1,15 @@
+services:
+  dev:
+    build: docker
+    image: laserscan-dev
+    platform: linux/amd64
+    working_dir: /work
+    volumes:
+      - .:/work
+      # Linux node_modules and the Gradle cache live in volumes so they survive between runs.
+      - node_modules:/work/node_modules
+      - gradle:/root/.gradle
+
+volumes:
+  node_modules:
+  gradle:

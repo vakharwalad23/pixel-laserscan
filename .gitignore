@@ -49,3 +49,5 @@ yarn-error.*
 modules/laser-core/cpp-tests/t
 modules/laser-core/cpp-tests/*.ply
 modules/laser-core/cpp-tests/*.obj
+modules/laser-core/android/build/
+modules/laser-core/android/.cxx/
